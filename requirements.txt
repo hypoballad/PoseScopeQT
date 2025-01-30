@@ -1,0 +1,6 @@
+pytest
+sqlitedict
+opencv-python
+mediapipe
+pyside6
+matplotlib

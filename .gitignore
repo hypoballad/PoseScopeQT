@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+.pytest_cache/
+src/calibration_parameters
+src/camera_parameters
+src/frames
+src/frames_pair
+src/ui/*.py
+src/PoseScopeQT.sqlite
+venv/

@@ -10,3 +10,4 @@ src/frames_pair
 src/ui/*.py
 src/PoseScopeQT.sqlite
 venv/
+output.txt

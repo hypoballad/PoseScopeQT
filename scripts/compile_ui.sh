@@ -1,4 +1,5 @@
 #!/bin/bash
+rm src/ui/*.py
 pyside6-uic src/ui/main_window.ui -o src/views/main_window.py
 pyside6-uic src/ui/preference.ui -o src/views/preference.py
 pyside6-uic src/ui/camera_calibration.ui -o src/views/camera_calibration.py

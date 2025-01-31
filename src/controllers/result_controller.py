@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from mpl_toolkits.mplot3d import Axes3D
+from libs.utils import get_R_z
 
 class Matplotlib3DWidget(QWidget):
     def __init__(self, parent=None, pose_keypoints=[]):
@@ -42,6 +43,8 @@ class Matplotlib3DWidget(QWidget):
         #p3ds[:, 2] = -p3ds[:, 2]
         # x軸を反転
         #p3ds[:, 0] = -p3ds[:, 0]
+        R = get_R_z(np.pi/2)
+        p3ds = R @ p3ds
 
         for bodypart, part_color in zip(self.body, self.colors):
             for _c in bodypart:
@@ -75,13 +78,13 @@ class Matplotlib3DWidget(QWidget):
 
         self.ax.set_xlim3d(x_min, x_max)
         self.ax.set_xlabel('x')
-        self.ax.set_ylim3d(y_max, y_min)
+        self.ax.set_ylim3d(y_min, y_max)
         self.ax.set_ylabel('y')
         self.ax.set_zlim3d(z_min, z_max)
         self.ax.set_zlabel('z')
 
         # Show the plot
-        self.ax.view_init(elev=90, azim=-90)
+        #self.ax.view_init(elev=90, azim=-90)
 
         self.canvas.draw()
 

@@ -2,9 +2,9 @@ from .cameracalibration_controller import CameraInitializationThread
 from .stereocalibration_controller import get_projection_matrix
 from .result_controller import Matplotlib3DWidget
 from models.sqlitedict_model import SqliteDictModel
-from libs.utils import DLT
+from libs.utils import DLT, get_screen_resolution, rotate_frame, fit_to_label, get_resized_wh, set_padding
 from PySide6 import QtWidgets
-import ctypes
+
 import cv2 as cv
 import numpy as np
 from PySide6.QtGui import QImage, QPixmap
@@ -29,6 +29,12 @@ class MainWindowController:
         self.view_resize = int(db["view_resize"])
         self.width = int(db["frame_width"])
         self.height = int(db["frame_height"])
+        camera0 = int(self.db["camera0"])
+        self.camera0_rotation_angle = int(db[f"camera{camera0}_rotation_angle"])
+        print(f"camera0_rotation_angle: {self.camera0_rotation_angle}")
+        camera1 = int(self.db["camera1"])
+        self.camera1_rotation_angle = int(db[f"camera{camera1}_rotation_angle"])
+        print(f"camera1_rotation_angle: {self.camera1_rotation_angle}")
         self.pose_keypoints = pose_keypoints
         #self.pose_keypoints = [0, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
         #self.pose_keypoints = [16, 14, 12, 11, 13, 15, 24, 23, 25, 26, 27, 28]
@@ -80,15 +86,15 @@ class MainWindowController:
         self.P1 = get_projection_matrix(cmtx1, R1, T1)
 
         mp_pose = mp.solutions.pose
-        self.pose0 = mp_pose.Pose(model_complexity=1, 
+        self.pose0 = mp_pose.Pose(model_complexity=2, 
                                   smooth_landmarks=True, 
-                                  enable_segmentation=False,
+                                  enable_segmentation=True,
                                   smooth_segmentation=True,
                                   min_detection_confidence=0.5, 
                                   min_tracking_confidence=0.5)
-        self.pose1 = mp_pose.Pose(model_complexity=1, 
+        self.pose1 = mp_pose.Pose(model_complexity=2, 
                                   smooth_landmarks=True, 
-                                  enable_segmentation=False,
+                                  enable_segmentation=True,
                                   smooth_segmentation=True,
                                   min_detection_confidence=0.5, 
                                   min_tracking_confidence=0.5)
@@ -130,6 +136,7 @@ class MainWindowController:
         self.check_all_cameras_initialized()
 
     def check_all_cameras_initialized(self):
+        self.output_file = open('output.txt', 'a')
         if self.camera0_initialized and self.camera1_initialized:
             self.timer.start(30)    # start timer after both cameras are initialized
 
@@ -138,29 +145,45 @@ class MainWindowController:
         self.cap0.release()
         self.cap1.release()
         self.display_placeholder_images()
+        self.output_file.close()
 
     def update_frame(self):
         ret0, frame0 = self.cap0.read()
         ret1, frame1 = self.cap1.read()
+        # print("ret0: ", ret0)
+        # print("ret1: ", ret1)
 
         if not ret0 or not ret1:
             print("Error: Cannot read frame from camera")
             return
         
+
+
+        # To improve performance, optionally mark the image as not writeable to
+        # pass by reference.
+        frame0 = rotate_frame(frame0, self.camera0_rotation_angle)
+        frame1 = rotate_frame(frame1, self.camera1_rotation_angle)
+        
+        frame0 = fit_to_label(frame0, self.label_width, self.label_height, self.camera0_rotation_angle, padding=False)
+        frame1 = fit_to_label(frame1, self.label_width, self.label_height, self.camera1_rotation_angle, padding=False)
+
         # convert BGR image to RGB
         frame0 = cv.cvtColor(frame0, cv.COLOR_BGR2RGB)
         frame1 = cv.cvtColor(frame1, cv.COLOR_BGR2RGB)
 
-        # To improve performance, optionally mark the image as not writeable to
-        # pass by reference.
         frame0.flags.writeable = False
         frame1.flags.writeable = False
+
         results0 = self.pose0.process(frame0)
         results1 = self.pose1.process(frame1)
 
         #reverse changes
         frame0.flags.writeable = True
         frame1.flags.writeable = True
+
+        # frame0_resized = fit_to_label(frame0_rotated, self.label_width, self.label_height, self.camera0_rotation_angle)
+        # frame1_resized = fit_to_label(frame1_rotated, self.label_width, self.label_height, self.camera1_rotation_angle)
+
         frame0 = cv.cvtColor(frame0, cv.COLOR_RGB2BGR)
         frame1 = cv.cvtColor(frame1, cv.COLOR_RGB2BGR)
 
@@ -208,32 +231,32 @@ class MainWindowController:
             frame_p3ds.append(_p3d)
 
         frame_p3ds = np.array(frame_p3ds).reshape((len(self.pose_keypoints), 3))
-        print(frame_p3ds)
+        
+        if frame_p3ds[0][0] != -1:
+            print(frame_p3ds)
+            self.output_file.write(str(frame_p3ds) + '\n')
         self.matplotlib_widget.update_plot(frame_p3ds)
 
-        frame0_small = cv.resize(frame0, (self.label_width, self.label_height))
-        frame1_small = cv.resize(frame1, (self.label_width, self.label_height))
-        frame0_small_rgb = cv.cvtColor(frame0_small, cv.COLOR_BGR2RGB)
-        frame1_small_rgb = cv.cvtColor(frame1_small, cv.COLOR_BGR2RGB)
+        # frame0_small = cv.resize(frame0, (self.label_width, self.label_height))
+        # frame1_small = cv.resize(frame1, (self.label_width, self.label_height))
+        resized0_w, resized0_h = get_resized_wh(frame0, self.label_width, self.label_height, self.camera0_rotation_angle)
+        resized1_w, resized1_h = get_resized_wh(frame1, self.label_width, self.label_height, self.camera1_rotation_angle)
+        frame0 = set_padding(frame0, self.label_width, resized0_w)
+        frame1 = set_padding(frame1, self.label_width, resized1_w)
+        frame0 = cv.cvtColor(frame0, cv.COLOR_BGR2RGB)
+        frame1 = cv.cvtColor(frame1, cv.COLOR_BGR2RGB)
 
-        heigcht0, width0, channel0 = frame0_small_rgb.shape
-        heigcht1, width1, channel1 = frame1_small_rgb.shape
-        bytes_per_line0 = 3 * width0
-        bytes_per_line1 = 3 * width1
-        qimage0 = QImage(frame0_small_rgb.data, width0, heigcht0, bytes_per_line0, QImage.Format.Format_RGB888)
+        heigcht0, width0, channel0 = frame0.shape
+        heigcht1, width1, channel1 = frame1.shape
+        bytes_per_line0 = channel0 * width0
+        bytes_per_line1 = channel1 * width1
+        qimage0 = QImage(frame0.data, width0, heigcht0, bytes_per_line0, QImage.Format.Format_RGB888)
         pixmap0 = QPixmap.fromImage(qimage0)
-        qimage1 = QImage(frame1_small_rgb.data, width1, heigcht1, bytes_per_line1, QImage.Format.Format_RGB888)
+        qimage1 = QImage(frame1.data, width1, heigcht1, bytes_per_line1, QImage.Format.Format_RGB888)
         pixmap1 = QPixmap.fromImage(qimage1)
         self.window.camera0Label.setPixmap(pixmap0)
         self.window.camera1Label.setPixmap(pixmap1)
         
-
-def get_screen_resolution():
-    user32 = ctypes.windll.user32
-    user32.SetProcessDPIAware()
-    screen_width = user32.GetSystemMetrics(0)
-    screen_height = user32.GetSystemMetrics(1)
-    return screen_width, screen_height
 
 def display_placeholder_image(label: QtWidgets.QLabel, view_resize, height: int, width: int, camera_name: str, bw=False):
     # テストパターン画像を生成

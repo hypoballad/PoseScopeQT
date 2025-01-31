@@ -99,6 +99,7 @@ class PreferenceDialog(QtWidgets.QDialog, Ui_PreferenceDialog):
         self.openStereoCalibrationButton.clicked.connect(self.on_stereo_calibration_button_clicked)
         self.stereoCameraCalibrationButton.clicked.connect(self.on_execStereoCalibration_button_clicked)
         self.openCameraInspectButton.clicked.connect(self.on_camera_inspect_button_clicked)
+        self.checkCalibrationButton.clicked.connect(self.on_checkCalibrationButton_clicked)
 
     def eventFilter(self, source, event):
         if event.type() == QtCore.QEvent.Type.MouseButtonPress and source is self.filecomboBox:

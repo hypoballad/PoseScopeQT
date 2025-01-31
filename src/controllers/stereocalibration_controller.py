@@ -2,7 +2,7 @@ import os, sys
 from PySide6 import QtWidgets
 from models.sqlitedict_model import SqliteDictModel
 from .cameracalibration_controller import CameraInitializationThread
-from libs.utils import rotate_frame, fit_to_label
+from libs.utils import rotate_frame, fit_to_label, get_screen_resolution
 import copy
 import numpy as np
 import cv2 as cv
@@ -33,7 +33,6 @@ class StereoCalibrationController:
         self.label_camera0_height = label_camera0_size.height()
         camera0 = int(self.db["camera0"])
         self.camera0_rotation_angle = int(db[f"camera{camera0}_rotation_angle"])
-
         print(f"camera0_rotation_angle: {self.camera0_rotation_angle}")
 
         label_camera1_size = self.dialog.camera1Label.size()
@@ -41,7 +40,6 @@ class StereoCalibrationController:
         self.label_camera1_height = label_camera1_size.height()
         camera1 = self.db["camera1"]
         self.camera1_rotation_angle = int(db[f"camera{camera1}_rotation_angle"])
-
         print(f"camera1_rotation_angle: {self.camera1_rotation_angle}")
 
         # カメラ準備中の代替画像を表示
@@ -238,6 +236,30 @@ class StereoCalibrationCheckController:
         self.height = int(db["frame_height"])
         self.view_resize = int(db["view_resize"])
 
+        screen_width, screen_height = get_screen_resolution()
+        if screen_width <= 2560 and screen_height <= 1440:
+            self.label_width = 960
+            self.label_height = 540
+        else:
+            self.label_width = 1280
+            self.label_height = 1080
+
+        self.dialog.camera0Label.setFixedSize(self.label_width, self.label_height)
+        # label_camera0_size = self.dialog.camera0Label.size()
+        # self.label_camera0_width = label_camera0_size.width()
+        # self.label_camera0_height = label_camera0_size.height()
+        camera0 = int(self.db["camera0"])
+        self.camera0_rotation_angle = int(db[f"camera{camera0}_rotation_angle"])
+        print(f"camera0_rotation_angle: {self.camera0_rotation_angle}")
+
+        self.dialog.camera1Label.setFixedSize(self.label_width, self.label_height)
+        # label_camera1_size = self.dialog.camera1Label.size()
+        # self.label_camera1_width = label_camera1_size.width()
+        # self.label_camera1_height = label_camera1_size.height()
+        camera1 = self.db["camera1"]
+        self.camera1_rotation_angle = int(db[f"camera{camera1}_rotation_angle"])
+        print(f"camera1_rotation_angle: {self.camera1_rotation_angle}")
+
         # カメラ準備中の代替画像を表示
         display_placeholder_image(dialog.camera0Label, self.view_resize, self.height, self.width, "Camera 0") 
         display_placeholder_image(dialog.camera1Label, self.view_resize, self.height, self.width, "Camera 1")
@@ -297,17 +319,23 @@ class StereoCalibrationCheckController:
             _p = tuple(_p.astype(np.int32))
             cv.line(frame1, origin, _p, col, 2)
 
-        frame0_small = cv.resize(frame0, None, fx=1/self.view_resize, fy=1/self.view_resize)
-        frame1_small = cv.resize(frame1, None, fx=1/self.view_resize, fy=1/self.view_resize)
-        frame0_small_rgb = cv.cvtColor(frame0_small, cv.COLOR_BGR2RGB)
-        frame1_small_rgb = cv.cvtColor(frame1_small, cv.COLOR_BGR2RGB)
-        hegith0, width0, channel0 = frame0_small_rgb.shape
-        hegith1, width1, channel1 = frame1_small_rgb.shape
-        bytes_per_line0 = 3 * width0
-        bytes_per_line1 = 3 * width1
-        qimage0 = QImage(frame0_small_rgb.data, width0, hegith0, bytes_per_line0, QImage.Format.Format_RGB888)
+        #frame0_small = cv.resize(frame0, None, fx=1/self.view_resize, fy=1/self.view_resize)
+        frame0_rotated = rotate_frame(frame0, self.camera0_rotation_angle)
+        frame0_resized = fit_to_label(frame0_rotated, self.label_width, self.label_height, self.camera0_rotation_angle)
+
+        #frame1_small = cv.resize(frame1, None, fx=1/self.view_resize, fy=1/self.view_resize)
+        frame1_rotated = rotate_frame(frame1, self.camera1_rotation_angle)
+        frame1_resized = fit_to_label(frame1_rotated, self.label_width, self.label_height, self.camera1_rotation_angle)
+        
+        frame0_rgb = cv.cvtColor(frame0_resized, cv.COLOR_BGR2RGB)
+        frame1_rgb = cv.cvtColor(frame1_resized, cv.COLOR_BGR2RGB)
+        hegith0, width0, channel0 = frame0_rgb.shape
+        hegith1, width1, channel1 = frame1_rgb.shape
+        bytes_per_line0 = channel0 * width0
+        bytes_per_line1 = channel1 * width1
+        qimage0 = QImage(frame0_rgb.data, width0, hegith0, bytes_per_line0, QImage.Format.Format_RGB888)
         pixmap0 = QPixmap.fromImage(qimage0)
-        qimage1 = QImage(frame1_small_rgb.data, width1, hegith1, bytes_per_line1, QImage.Format.Format_RGB888)
+        qimage1 = QImage(frame1_rgb.data, width1, hegith1, bytes_per_line1, QImage.Format.Format_RGB888)
         pixmap1 = QPixmap.fromImage(qimage1)
         self.dialog.camera0Label.setPixmap(pixmap0)
         self.dialog.camera1Label.setPixmap(pixmap1)

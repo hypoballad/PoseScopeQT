@@ -3,6 +3,7 @@ from scipy import linalg
 from PySide6 import QtWidgets
 from PySide6.QtGui import QImage, QPixmap
 import cv2 as cv
+import ctypes
 
 #direct linear transform
 def DLT(P1, P2, point1, point2):
@@ -57,8 +58,39 @@ def rotate_frame(frame, rotation_angle):
         return cv.rotate(frame, cv.ROTATE_90_COUNTERCLOCKWISE)
     return frame  # 0度の場合はそのまま
 
-def fit_to_label(frame, width, height, rotation_angle):
+def fit_to_label(frame, width, height, rotation_angle, padding=True):
     """回転後のフレームを適切にリサイズし、左右に余白を追加してセンターに表示"""
+    # h, w = frame.shape[:2]
+
+    # if rotation_angle in [90, 270]:
+    #     # 90° or 270°: 縦長の画像なので、高さをラベルにフィットさせ、横は余白を追加
+    #     scale = height / h
+    #     resized_w, resized_h = int(w * scale), height
+    # else:
+    #     # 0° or 180°: そのまま横をフィットさせる
+    #     scale = width / w
+    #     resized_w, resized_h = width, int(h * scale)
+
+    resized_w, resized_h = get_resized_wh(frame, width, height, rotation_angle)
+
+    frame_resized = cv.resize(frame, (resized_w, resized_h))
+
+    if not padding:
+        return frame_resized
+    
+    # # 余白の計算 (左右に余白を追加)
+    # left = (width - resized_w) // 2
+    # right = width - resized_w - left
+    # top, bottom = 0, 0  # 上下の余白は追加しない
+
+    # # 余白を追加してセンター配置
+    # frame_padded = cv.copyMakeBorder(frame_resized, top, bottom, left, right, cv.BORDER_CONSTANT, value=[0, 0, 0])
+
+    frame_padded = set_padding(frame_resized, width, resized_w)
+
+    return frame_padded
+
+def get_resized_wh(frame, width, height, rotation_angle):
     h, w = frame.shape[:2]
 
     if rotation_angle in [90, 270]:
@@ -70,14 +102,26 @@ def fit_to_label(frame, width, height, rotation_angle):
         scale = width / w
         resized_w, resized_h = width, int(h * scale)
 
-    frame_resized = cv.resize(frame, (resized_w, resized_h))
+    return resized_w, resized_h
 
-    # 余白の計算 (左右に余白を追加)
+def set_padding(frame, width, resized_w):
     left = (width - resized_w) // 2
     right = width - resized_w - left
     top, bottom = 0, 0  # 上下の余白は追加しない
 
     # 余白を追加してセンター配置
-    frame_padded = cv.copyMakeBorder(frame_resized, top, bottom, left, right, cv.BORDER_CONSTANT, value=[0, 0, 0])
-
+    frame_padded = cv.copyMakeBorder(frame, top, bottom, left, right, cv.BORDER_CONSTANT, value=[0, 0, 0])
     return frame_padded
+
+def get_screen_resolution():
+    user32 = ctypes.windll.user32
+    user32.SetProcessDPIAware()
+    screen_width = user32.GetSystemMetrics(0) 
+    screen_height = user32.GetSystemMetrics(1)
+    return screen_width, screen_height
+
+def get_R_x(theta):
+    R = np.array([[1, 0, 0],
+                  [0, np.cos(theta), -np.sin(theta)],
+                  [0, np.sin(theta),  np.cos(theta)]])
+    return R
